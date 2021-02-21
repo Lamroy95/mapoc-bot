@@ -331,3 +331,4 @@ pip-selfcheck.json
 
 .idea/
 /states_and_commands.txt
+/app/files/
