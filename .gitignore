@@ -309,7 +309,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# pytype static type analyzer
+# pytype files type analyzer
 .pytype/
 
 # profiling data
@@ -330,3 +330,4 @@ pip-selfcheck.json
 # End of https://www.toptal.com/developers/gitignore/api/python,pycharm,intellij,dotenv,venv
 
 .idea/
+/states_and_commands.txt
