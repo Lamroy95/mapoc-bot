@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import types
-from aiogram.utils import exceptions
+from aiogram.utils import exceptions, markdown
 from aiogram.dispatcher import Dispatcher, FSMContext, filters
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,8 @@ async def cmd_start(message: types.Message):
     await message.answer(
         "Hi there!\n"
         "I can create map posters.\n"
-        "Please choose something from menu below",
+        "Please choose something from menu below\n\n"
+        f"{markdown.hitalic('Render process takes a lot of time. Each poster takes about 5 minutes and 10GB RAM.')}",
         reply_markup=rkb,
     )
 
@@ -70,4 +71,4 @@ def register_common(dp: Dispatcher):
         filters.Text(equals='cancel', ignore_case=True),
         state='*',
     )
-    # dp.register_errors_handler(errors_handler)
+    dp.register_errors_handler(errors_handler)

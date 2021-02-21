@@ -111,15 +111,16 @@ async def make_poster(c: types.CallbackQuery, button: kbd.Button, manager: Dialo
         geojson=gjf,
         output_filename=f"{prefix}_{color}.png",
         delete_geojson=manager.context.data("is_area_specified", False),
+        caption=f"{city}, {color}",
     )
 
-    manager.context.set_data("pending", True)
     await c.message.answer(
-        f"Your position in queue: {markdown.hbold(pos)}\n"
-        f"Cmd: {markdown.hbold(cmd)}"
+        "Poster creation has been queued!\n"
+        f"Your position in the queue: {markdown.hbold(pos)}\n"
+        f"Estimated time: ~{markdown.hbold((pos+1) * 6)} minutes\n"
     )
 
-    # TODO: remove this
+    # TODO
     await manager.done()
     from aiogram_dialog.data import DialogContext
     DialogContext(manager.proxy, "", None).last_message_id = None
