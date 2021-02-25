@@ -13,9 +13,10 @@ from app.states import PosterCreation
 from app.config import FILES_PATH, CMD_TEMPLATE
 from app.utils.coords import area_to_geojson
 from app.utils.queue_manager import QueueManager
+from app.utils.executor import run_blocking
 from app.services import db
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("dialog - poster_creation")
 
 
 async def set_selected_city(c: types.CallbackQuery, item_id: str, select: kbd.Select, manager: DialogManager):
@@ -61,19 +62,20 @@ async def area_image_handler(m: types.Message, dialog: Dialog, manager: DialogMa
         await dialog.next(manager)
         return
 
-    manager.context.set_data("is_area_specified", True)
     area_img = BytesIO()
     await m.photo[-1].download(area_img, seek=True)
 
-    # try:
-    #     geojson_path = area_to_geojson(city_name, area_img)
-    # except ValueError as e:
-    #     geojson_path = get_city_gjs_path(city_name)
+    try:
+        geojson_path, selected_image_bytes = await run_blocking(area_to_geojson, city_name, area_img)
+        manager.context.set_data("is_area_specified", True)
+        await m.reply_photo(types.InputFile(selected_image_bytes), caption="Defined area")
+    except ValueError as e:
+        logger.exception(e)
+        geojson_path = get_city_gjs_path(city_name)
+        manager.context.set_data("is_area_specified", False)
+        await m.reply("Can't define area, error occured. Using full map")
 
-    geojson_path, selected_image_bytes = area_to_geojson(city_name, area_img)
     manager.context.set_data("geojson", geojson_path)
-    await m.reply_photo(types.InputFile(selected_image_bytes), caption="Defined area")
-
     await dialog.next(manager)
 
 
@@ -83,6 +85,7 @@ def get_city_gjs_path(city_name):
 
 
 async def set_city_geojson(c: types.CallbackQuery, button: kbd.Button, manager: DialogManager):
+    manager.context.set_data("is_area_specified", False)
     city_select: kbd.Select = manager.dialog().find("city_select")
     city_name = city_select.get_checked(manager)
     geojson_path = get_city_gjs_path(city_name)
@@ -120,7 +123,7 @@ async def make_poster(c: types.CallbackQuery, button: kbd.Button, manager: Dialo
         f"Estimated time: ~{markdown.hbold((pos+1) * 6)} minutes\n"
     )
 
-    # TODO
+    # TODO это костыль
     await manager.done()
     from aiogram_dialog.data import DialogContext
     DialogContext(manager.proxy, "", None).last_message_id = None
@@ -128,7 +131,7 @@ async def make_poster(c: types.CallbackQuery, button: kbd.Button, manager: Dialo
 
 city_window = Window(
     text=text.Const("Let's start.\nChoose city"),
-    kbd=kbd.Group(
+    kbd=kbd.Group(kbd.Group(
         kbd.Radio(
             checked_text=text.Format("✅ {item}"), unchecked_text=text.Format("{item}"),
             items=db.get_cities_list(),
@@ -136,6 +139,9 @@ city_window = Window(
             id="city_select",
             on_state_changed=set_selected_city,
         ),
+        keep_rows=False,
+        width=2,
+    ),
         kbd.Next(
             when=lambda d, w, m: m.dialog().find("city_select").get_checked(m) is not None,
         ),
@@ -163,12 +169,16 @@ area_choice_window = Window(
 color_choice_window = Window(
     text=text.Const("Good. Now choose color scheme:"),
     kbd=kbd.Group(
-        kbd.Radio(
-            checked_text=text.Format("✅ {item}"), unchecked_text=text.Format("{item}"),
-            items=db.get_color_schemes(),
-            item_id_getter=lambda x: x,
-            id="color_select",
-            on_state_changed=set_selected_color,
+        kbd.Group(
+            kbd.Radio(
+                checked_text=text.Format("✅ {item}"), unchecked_text=text.Format("{item}"),
+                items=db.get_color_schemes(),
+                item_id_getter=lambda x: x,
+                id="color_select",
+                on_state_changed=set_selected_color,
+            ),
+            width=2,
+            keep_rows=False,
         ),
         kbd.Row(
             kbd.Back(),

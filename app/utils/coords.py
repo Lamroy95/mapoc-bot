@@ -4,66 +4,98 @@ import io
 import json
 from tempfile import NamedTemporaryFile
 from decimal import *
-from typing import Tuple
+from numba import njit
 
 from app.config import FILES_PATH, TMP_PATH
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("utils - coords")
 
 
-def get_area_coords(city: np.ndarray, area: np.ndarray) -> tuple:
-    methods = [
-        cv2.TM_CCOEFF,
-        cv2.TM_CCOEFF_NORMED,
-        cv2.TM_CCORR,
-        cv2.TM_CCORR_NORMED,
-        cv2.TM_SQDIFF,
-        cv2.TM_SQDIFF_NORMED
-    ]
-    method = methods[1]
-    area_height, area_width, *_ = area.shape
+@njit
+def filter_scale(s, c_shape, a_shape):
+    return s < c_shape[0]/a_shape[0] and s < c_shape[1]/a_shape[1]
 
-    best_val = None
+
+@njit
+def get_scales(c_shape, a_shape, n=50):
+    arr = np.linspace(0.2, 1.0, n)
+
+    j = 0
+    for i in range(arr.size):
+        if filter_scale(arr[i], c_shape, a_shape):
+            j += 1
+    result = np.empty(j, dtype=arr.dtype)
+    j = 0
+    for i in range(arr.size):
+        if filter_scale(arr[i], c_shape, a_shape):
+            result[j] = arr[i]
+            j += 1
+
+    return result
+
+
+def find_template(city, resized, method=cv2.TM_CCOEFF_NORMED):
+    res = cv2.matchTemplate(city, resized, method)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+
+    bottom_right = (max_loc[0] + resized.shape[1], max_loc[1] + resized.shape[0])
+    return max_val, *max_loc, *bottom_right
+
+
+def get_area_coords_fast(city: np.ndarray, area: np.ndarray, n=50) -> tuple:
+    area_height = area.shape[0]
+    area_width = area.shape[1]
+
+    scales_arr = get_scales(city.shape, area.shape, n)
+    resized_imgs = np.array(
+        [
+            cv2.resize(area, (int(area_width * scale), int(area_height * scale)))
+            for scale in scales_arr
+        ],
+        dtype=object
+    )
+    matches: np.ndarray = np.array(
+        [
+            find_template(city, resized)
+            for resized
+            in resized_imgs
+        ],
+        dtype=object
+    )
+    best_match = matches[matches.argmax(axis=0)[0]]
+
+    top_left = best_match[1:3]
+    bottom_right = best_match[3:5]
+
+    return tuple(top_left), tuple(bottom_right)
+
+
+def get_area_coords(city: np.ndarray, area: np.ndarray, n=50) -> tuple:
+    area_height, area_width = area.shape[:2]
+    method = cv2.TM_CCOEFF_NORMED
+
+    lower_boundary = 0.2
     top_left = None
-    for scale in np.linspace(0.2, 1.0, 20):
+    for scale in np.linspace(0.1, 1, n):
         resized = cv2.resize(area, (int(area_width * scale), int(area_height * scale)))
-
-        if (resized.shape[0] < 10 or resized.shape[1] < 10 or
-                city.shape[0] < resized.shape[0] or city.shape[0] < resized.shape[0]):
-            break
+        if city.shape[0] <= resized.shape[0] or city.shape[1] <= resized.shape[1]\
+                or resized.shape[0] < 10 or resized.shape[1] < 10:
+            continue
 
         res = cv2.matchTemplate(city, resized, method)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
-        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-            threshold = 0.1
-            best_val = threshold
-            found_val = min_val
-            if found_val < best_val:
-                best_val = found_val
-                top_left = min_loc
-                found_height, found_width, *_ = resized.shape
-            if found_val <= threshold:
-                break
-
-        else:
-            threshold = 0.9
-            best_val = 0.3
-            found_val = max_val
-            if found_val > best_val:
-                best_val = found_val
-                top_left = max_loc
-                found_height, found_width, *_ = resized.shape
-            if found_val >= threshold:
-                break
+        if max_val > lower_boundary:
+            lower_boundary = max_val
+            top_left = max_loc
+            res_shape = resized.shape[:2]
 
     if top_left is None:
-        raise ValueError("Area not found")
+        raise ValueError
 
-    bottom_right = (top_left[0] + found_width, top_left[1] + found_height)
-    logger.info(f"Best match: {best_val}")
+    bottom_right = (top_left[0] + res_shape[1], top_left[1] + res_shape[0])
 
     return top_left, bottom_right
 
@@ -132,7 +164,10 @@ def area_to_geojson(city_name: str, area_img_bytes: io.BytesIO) -> (str, bytes):
     area_img = cv2.imdecode(np.frombuffer(area_img_bytes.read(), dtype=np.uint8), cv2.IMREAD_COLOR)
 
     city_height, city_width, *_ = city_img.shape
-    area_top_left, area_bottom_right = get_area_coords(city_img, area_img)
+
+    # TODO: refactor fast method
+    # area_top_left, area_bottom_right = get_area_coords(city_img, area_img)
+    area_top_left, area_bottom_right = get_area_coords_fast(city_img, area_img)
 
     cv2.rectangle(city_img, area_top_left, area_bottom_right, (0, 0, 255), 2)
     res, selected_buf = cv2.imencode('.png', city_img)
@@ -154,7 +189,3 @@ def area_to_geojson(city_name: str, area_img_bytes: io.BytesIO) -> (str, bytes):
         area_geojson_path = gjf.name
 
     return area_geojson_path, selected_img_bytes
-
-
-if __name__ == '__main__':
-    fp = FILES_PATH / "img" / "St. Petersburg.png"

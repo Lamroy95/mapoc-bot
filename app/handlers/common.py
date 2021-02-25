@@ -4,7 +4,7 @@ from aiogram import types
 from aiogram.utils import exceptions, markdown
 from aiogram.dispatcher import Dispatcher, FSMContext, filters
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("handlers - common")
 
 
 def get_main_menu_rkb() -> types.ReplyKeyboardMarkup:
@@ -15,7 +15,7 @@ def get_main_menu_rkb() -> types.ReplyKeyboardMarkup:
     )
     menu = [
         "Make poster",
-        "Manage colors",
+        # "Manage colors",
     ]
     rkb.add(*(types.KeyboardButton(text) for text in menu))
     return rkb
@@ -52,9 +52,9 @@ async def errors_handler(update: types.Update, exception: Exception):
     try:
         raise exception
     except exceptions.MessageNotModified as e:
-        logger.warning(f"{e}")
+        logger.error(f"Error \"{e}\"\nin update\n{update}")
     except Exception as e:
-        logger.exception(e, exc_info=True)
+        logger.error(f"Error \"{e}\"\nin update\n{update}")
 
     return True
 

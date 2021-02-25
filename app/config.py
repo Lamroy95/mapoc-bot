@@ -14,3 +14,4 @@ CMD_TEMPLATE = "mapoc poster create --shp_path \"{shp}\" --geojson \"{geojson}\"
 BASE_DIR = Path(__file__).resolve().parent
 FILES_PATH = BASE_DIR / "files"
 TMP_PATH = FILES_PATH / "tmp"
+OUTPUT_PATH = BASE_DIR

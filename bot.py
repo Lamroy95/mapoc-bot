@@ -1,3 +1,4 @@
+#!venv/bin/python
 import asyncio
 import logging
 
@@ -23,7 +24,19 @@ def register_dialogs(registry: DialogRegistry):
 
 async def main():
     logger = logging.getLogger("main")
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+
+    fh = logging.FileHandler("mapoc-bot-app.log")
+    fh.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+
     logger.info("Starting mapoc-bot")
 
     storage = MemoryStorage()

@@ -1,23 +1,11 @@
 import asyncio
-import os
 import logging
 
-from aiogram import types
-from aiogram.utils.markdown import hpre
+from app.utils.tg_client_api import send_file
+from app.utils.executor import run_blocking
+from app.utils.image import make_preview
 
-from app.utils.tg_client_api import PyrogramBot
-
-logger = logging.getLogger(__name__)
-
-
-async def send_file(chat_id, fp, cap):
-    async with PyrogramBot() as pyro_bot:
-        await pyro_bot.send_document(
-            chat_id=chat_id,
-            filepath=fp,
-            caption=cap,
-        )
-    os.remove(fp)
+logger = logging.getLogger("utils - queue_manager")
 
 
 class QueueManager:
@@ -50,26 +38,29 @@ class QueueManager:
             gjf = task["geojson"]
             callback = task["callback"]
             manager = task["manager"]
-            await callback.message.answer(
+            await callback.message.reply(
                 "Your poster is processing now",
                 disable_notification=True,
             )
 
-            # await asyncio.sleep(20)
             ret_code = await self.run(cmd)
             self.q.task_done()
 
-            if task["delete_geojson"]:
-                os.remove(gjf)
+            preview_filename = await run_blocking(make_preview, task["output_filename"])
+
+            # TODO: fix bug: sometimes default geojson is deleted!
+            # if task["delete_geojson"]:
+            #     os.remove(gjf)
 
             try:
-                asyncio.create_task(send_file(
+                await asyncio.create_task(send_file(
                     callback.from_user.id,
                     task["output_filename"],
+                    preview_filename,
                     task["caption"]
                 ))
             except Exception as e:
-                await callback.message.answer(hpre(f"{e}\n\n{e.__cause__}\n\n{e.__traceback__}"))
+                logger.error(e)
 
             # await manager.done()
             # from aiogram_dialog.data import DialogContext
